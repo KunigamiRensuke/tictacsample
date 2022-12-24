@@ -1,13 +1,42 @@
 #![allow(dead_code, unused_variables)]
 
 fn main() {
-    let mut clock = time_module::StopWatch::new();
     println!("Hello lets play ordinary tic tac toe");
-    clock.get_elapsed_time();
-    println!("1");
-    println!("2");
-    println!("3");
-    clock.get_partition_time(3)
+    for i in 0..3 {
+        println!("{}", i)
+    }
+    let my_board = TicTacToeBoard::new();
+    my_board.show()
+}
+
+struct TicTacToeBoard {
+    x_value: u16,
+    o_value: u16,
+}
+impl TicTacToeBoard {
+    fn new() -> TicTacToeBoard {
+        TicTacToeBoard {
+            x_value: 0,
+            o_value: 0,
+        }
+    }
+    fn show(&self) {
+        println!(" _ _ _ ");
+        for i in 0..3 {
+            let mut line_vec = Vec::new();
+            for j in 0..3 {
+                if self.x_value >> (3 * i + j) == 1 {
+                    line_vec.push("X")
+                } else if self.o_value >> (3 * i + j) == 1 {
+                    line_vec.push("O")
+                } else {
+                    line_vec.push(" ")
+                }
+            }
+            println!("|{}|{}|{}|", line_vec[0], line_vec[1], line_vec[2]);
+        }
+        println!(" ‾ ‾ ‾ ")
+    }
 }
 mod time_module {
     use std::time::Instant;
