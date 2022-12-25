@@ -102,6 +102,16 @@ mod game_module {
                 },
             }
         }
+        fn reward(&self) -> i8 {
+            if self.check_won_board() {
+                match self.x_is_player {
+                    PlayerToken::X => 1,
+                    PlayerToken::O => -1,
+                }
+            } else {
+                0
+            }
+        }
         fn possible_moves(&self) -> Vec<(u8, u8)> {
             let combined_fill = self.x_value | self.o_value;
             let mut points = Vec::new();
