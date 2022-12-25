@@ -50,10 +50,11 @@ mod game_module {
             }
         }
         pub fn show_game_stage_and_end(&self) -> bool {
-            println!(" _ _ _ ");
-            for i in 0..3 {
+            let mut output_vec = Vec::new();
+            output_vec.push(" _ _ _ ".to_string());
+            for i in 0..3u8 {
                 let mut line_vec = Vec::new();
-                for j in 0..3 {
+                for j in 0..3u8 {
                     let position = 3 * i + j;
                     let marker = if (self.x_value >> position) & 1 == 1 {
                         "X"
@@ -64,17 +65,20 @@ mod game_module {
                     };
                     line_vec.push(marker)
                 }
-                println!("|{}|{}|{}|", line_vec[0], line_vec[1], line_vec[2]);
+                output_vec.push(format!("|{}|", line_vec.join("|")));
             }
-            println!(" ‾ ‾ ‾ ");
+            output_vec.push(" ‾ ‾ ‾ ".to_string());
             if self.check_won_board() {
-                println!("{} has won", self.x_is_player.opponent().value());
+                output_vec.push(format!("{} has won", self.x_is_player.opponent().value()));
+                get_output_full(&output_vec);
                 true
             } else if self.check_tie_board() {
-                println!("Game has ended in a draw");
+                output_vec.push("Game has ended in a draw".to_string());
+                get_output_full(&output_vec);
                 true
             } else {
-                println!("{} to play", self.x_is_player.value());
+                output_vec.push(format!("{} to play", self.x_is_player.value()));
+                get_output_full(&output_vec);
                 false
             }
         }
@@ -98,6 +102,19 @@ mod game_module {
                 },
             }
         }
+        fn possible_moves(&self) -> Vec<(u8, u8)> {
+            let combined_fill = self.x_value | self.o_value;
+            let mut points = Vec::new();
+            for i in 0..3u8 {
+                for j in 0..3u8 {
+                    let position = 3 * i + j;
+                    if (combined_fill >> position) & 1 == 0 {
+                        points.push((i, j))
+                    }
+                }
+            }
+            points
+        }
         fn check_won_board(&self) -> bool {
             let last_player = self.x_is_player.opponent();
             let winner_value = match last_player {
@@ -119,6 +136,10 @@ mod game_module {
         fn check_tie_board(&self) -> bool {
             (self.x_value | self.o_value) == (1 << 9) - 1
         }
+    }
+
+    fn get_output_full(output_vec: &[String]) {
+        println!("{}", output_vec.join("\n"));
     }
 }
 mod time_module {
