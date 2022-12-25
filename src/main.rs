@@ -3,26 +3,18 @@ use std::io;
 fn main() {
     println!("Hello lets play ordinary tic tac toe");
     let mut my_board = game_module::TicTacToeBoard::new();
-    my_board.show();
-    for turn in 0..9 {
+    my_board.show_game_stage_and_end();
+    for turn in 1..=9 {
         println!("{}.Enter your move (row , column)", turn);
         let (x, y) = get_human_agent_input();
         let mut clock = time_module::StopWatch::new();
         my_board = my_board.get_move((x, y));
-        my_board.show();
-        clock.get_elapsed_time()
+        let game_terminal = my_board.show_game_stage_and_end();
+        clock.get_elapsed_time();
+        if game_terminal {
+            break;
+        }
     }
-}
-
-fn get_human_agent_input() -> (u8, u8) {
-    let mut user_input = String::new();
-    io::stdin().read_line(&mut user_input).unwrap();
-    let numbers: Vec<u8> = user_input
-        .split_ascii_whitespace()
-        .map(|x| x.parse().unwrap())
-        .collect();
-    let (x, y) = (*numbers.first().unwrap(), *numbers.get(1).unwrap());
-    (x, y)
 }
 
 mod game_module {
@@ -57,8 +49,7 @@ mod game_module {
                 x_is_player: PlayerToken::X,
             }
         }
-        pub fn show(&self) {
-            println!("{} to play", self.x_is_player.value());
+        pub fn show_game_stage_and_end(&self) -> bool {
             println!(" _ _ _ ");
             for i in 0..3 {
                 let mut line_vec = Vec::new();
@@ -75,8 +66,19 @@ mod game_module {
                 }
                 println!("|{}|{}|{}|", line_vec[0], line_vec[1], line_vec[2]);
             }
-            println!(" ‾ ‾ ‾ ")
+            println!(" ‾ ‾ ‾ ");
+            if self.check_won_board() {
+                println!("{} has won", self.x_is_player.opponent().value());
+                true
+            } else if self.check_tie_board() {
+                println!("Game has ended in a draw");
+                true
+            } else {
+                println!("{} to play", self.x_is_player.value());
+                false
+            }
         }
+
         pub fn get_move(&self, action: (u8, u8)) -> TicTacToeBoard {
             assert!((action.0 < 3) & (action.1 < 3));
             let action_point = 3 * action.0 + action.1;
@@ -96,9 +98,26 @@ mod game_module {
                 },
             }
         }
-        pub fn check_won_board(&self) -> bool {
-            let last_player = self.x_is_player.opponent().value();
-            todo!()
+        fn check_won_board(&self) -> bool {
+            let last_player = self.x_is_player.opponent();
+            let winner_value = match last_player {
+                PlayerToken::X => self.x_value,
+                PlayerToken::O => self.o_value,
+            };
+            let three_in_a_row = 0b111;
+            let row_condition = (winner_value & three_in_a_row == three_in_a_row)
+                | ((winner_value >> 3) & three_in_a_row == three_in_a_row)
+                | ((winner_value >> 6) & three_in_a_row == three_in_a_row);
+            let column_condition =
+                (winner_value & (winner_value >> 3) & (winner_value >> 6) & three_in_a_row) > 0;
+            let left_diagonal_condition =
+                ((winner_value & (winner_value >> 4) & (winner_value >> 8)) & 1) > 0;
+            let right_diagonal_condition =
+                (((winner_value >> 2) & (winner_value >> 4) & (winner_value >> 6)) & 1) > 0;
+            row_condition | column_condition | left_diagonal_condition | right_diagonal_condition
+        }
+        fn check_tie_board(&self) -> bool {
+            (self.x_value | self.o_value) == (1 << 9) - 1
         }
     }
 }
@@ -146,4 +165,14 @@ mod time_module {
             format!("{:.3} ns", elapsed_float)
         }
     }
+}
+fn get_human_agent_input() -> (u8, u8) {
+    let mut user_input = String::new();
+    io::stdin().read_line(&mut user_input).unwrap();
+    let numbers: Vec<u8> = user_input
+        .split_ascii_whitespace()
+        .map(|x| x.parse().unwrap())
+        .collect();
+    let (x, y) = (*numbers.first().unwrap(), *numbers.get(1).unwrap());
+    (x, y)
 }
