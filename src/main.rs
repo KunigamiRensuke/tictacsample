@@ -1,19 +1,89 @@
 #![allow(dead_code, unused_variables)]
 use std::io;
 fn main() {
-    println!("Hello lets play ordinary tic tac toe");
+    println!(
+        "Hello lets play ordinary tic tac toe\n
+        Enter your 2 agents of choice in correct order of play\n
+        1.Human 2.RandomAgent 3.Chooser Winner 4.Choose no losing 5.MCTS agent 6.MCTS solver"
+    );
+    let (agent_1, agent_2) = get_agents_to_play();
     let mut my_board = game_module::TicTacToeBoard::new();
     my_board.show_game_stage_and_end();
-    for turn in 1..=9 {
-        println!("{}.Enter your move (row , column)", turn);
-        let (x, y) = get_human_agent_input();
-        let mut clock = time_module::StopWatch::new();
-        my_board = my_board.get_move((x, y));
+    let mut turns = 1;
+    loop {
+        println!("Enter your move (row , column)");
+        let action_chosen = match turns % 2 == 1 {
+            true => agent_1.get_action(&my_board),
+            false => agent_2.get_action(&my_board),
+        };
+        my_board = match my_board.get_move(action_chosen) {
+            Ok(board) => board,
+            Err(e) => match e.as_str() {
+                "Already placed, try again" => {
+                    println!("{}", e);
+                    continue;
+                }
+                _ => {
+                    println!("{} Exiting", e);
+                    return;
+                }
+            },
+        };
         let game_terminal = my_board.show_game_stage_and_end();
-        clock.get_elapsed_time();
         if game_terminal {
             break;
         }
+        turns += 1;
+    }
+}
+
+fn get_agents_to_play() -> (agent::AgentType, agent::AgentType) {
+    let mut user_input = String::new();
+    io::stdin().read_line(&mut user_input).unwrap();
+    let numbers: Vec<agent::AgentType> = user_input
+        .split_ascii_whitespace()
+        .map(|x| match x.parse().unwrap() {
+            1 => agent::AgentType::HumanAgent,
+            _ => agent::AgentType::RandomAgent,
+        })
+        .collect();
+    let (agent_1, agent_2) = (*numbers.first().unwrap(), *numbers.get(1).unwrap());
+    (agent_1, agent_2)
+}
+
+mod agent {
+    use std::io;
+
+    use crate::{game_module, time_module};
+    use rand::seq::SliceRandom;
+    use rand::thread_rng;
+    #[derive(Clone, Copy)]
+    pub(crate) enum AgentType {
+        HumanAgent,
+        RandomAgent,
+    }
+    impl AgentType {
+        pub fn get_action(&self, board_stage: &game_module::TicTacToeBoard) -> (u8, u8) {
+            let mut clock = time_module::StopWatch::new();
+            match self {
+                AgentType::HumanAgent => get_human_agent_input(),
+                AgentType::RandomAgent => {
+                    let mut rng = thread_rng();
+                    clock.get_elapsed_time();
+                    *board_stage.possible_moves().choose(&mut rng).unwrap()
+                }
+            }
+        }
+    }
+    fn get_human_agent_input() -> (u8, u8) {
+        let mut user_input = String::new();
+        io::stdin().read_line(&mut user_input).unwrap();
+        let numbers: Vec<u8> = user_input
+            .split_ascii_whitespace()
+            .map(|x| x.parse().unwrap())
+            .collect();
+        let (x, y) = (*numbers.first().unwrap(), *numbers.get(1).unwrap());
+        (x, y)
     }
 }
 
@@ -83,13 +153,18 @@ mod game_module {
             }
         }
 
-        pub fn get_move(&self, action: (u8, u8)) -> TicTacToeBoard {
-            assert!((action.0 < 3) & (action.1 < 3));
+        pub fn get_move(&self, action: (u8, u8)) -> Result<TicTacToeBoard, String> {
+            if !((action.0 < 3) & (action.1 < 3)) {
+                return Err("Wrong coordinates".to_owned());
+            }
             let action_point = 3 * action.0 + action.1;
             let shift = 1 << action_point;
-            assert!((self.x_value >> action_point) & 1 == 0);
-            assert!((self.o_value >> action_point) & 1 == 0);
-            match self.x_is_player {
+            if !(((self.x_value >> action_point) & 1 == 0)
+                & ((self.o_value >> action_point) & 1 == 0))
+            {
+                return Err("Already placed, try again".to_owned());
+            }
+            let result_board = match self.x_is_player {
                 PlayerToken::X => TicTacToeBoard {
                     x_value: self.x_value + shift,
                     o_value: self.o_value,
@@ -100,7 +175,8 @@ mod game_module {
                     o_value: self.o_value + shift,
                     x_is_player: self.x_is_player.opponent(),
                 },
-            }
+            };
+            Ok(result_board)
         }
         fn reward(&self) -> i8 {
             if self.check_won_board() {
@@ -112,7 +188,7 @@ mod game_module {
                 0
             }
         }
-        fn possible_moves(&self) -> Vec<(u8, u8)> {
+        pub fn possible_moves(&self) -> Vec<(u8, u8)> {
             let combined_fill = self.x_value | self.o_value;
             let mut points = Vec::new();
             for i in 0..3u8 {
@@ -145,6 +221,9 @@ mod game_module {
         }
         fn check_tie_board(&self) -> bool {
             (self.x_value | self.o_value) == (1 << 9) - 1
+        }
+        fn check_terminal(&self) -> bool {
+            self.check_won_board() | self.check_tie_board()
         }
     }
 
@@ -196,14 +275,4 @@ mod time_module {
             format!("{:.3} ns", elapsed_float)
         }
     }
-}
-fn get_human_agent_input() -> (u8, u8) {
-    let mut user_input = String::new();
-    io::stdin().read_line(&mut user_input).unwrap();
-    let numbers: Vec<u8> = user_input
-        .split_ascii_whitespace()
-        .map(|x| x.parse().unwrap())
-        .collect();
-    let (x, y) = (*numbers.first().unwrap(), *numbers.get(1).unwrap());
-    (x, y)
 }
