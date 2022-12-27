@@ -204,6 +204,7 @@ mod agent {
         Human(PerformanceStats, usize),
         Random(PerformanceStats, usize),
         WinningMoveSelector(PerformanceStats, usize),
+        NonLosingMoveSelector(PerformanceStats, usize),
     }
     impl AgentType {
         pub fn create_agent_from_id(id: u32, index: usize) -> Option<AgentType> {
@@ -211,6 +212,10 @@ mod agent {
                 1 => Some(AgentType::Human(PerformanceStats::new(), index)),
                 2 => Some(AgentType::Random(PerformanceStats::new(), index)),
                 3 => Some(AgentType::WinningMoveSelector(
+                    PerformanceStats::new(),
+                    index,
+                )),
+                4 => Some(AgentType::NonLosingMoveSelector(
                     PerformanceStats::new(),
                     index,
                 )),
@@ -222,6 +227,9 @@ mod agent {
                 AgentType::Human(_stats, index) => format!("Human agent {}", index),
                 AgentType::Random(_stats, index) => format!("Random agent {}", index),
                 AgentType::WinningMoveSelector(_stats, index) => format!("Winning agent {}", index),
+                AgentType::NonLosingMoveSelector(_stats, index) => {
+                    format!("Non losing agent {}", index)
+                }
             }
         }
         pub fn get_perf_stats(&self) {
@@ -231,6 +239,9 @@ mod agent {
                     println!("{}->{}", self.get_name(), stats.show())
                 }
                 AgentType::WinningMoveSelector(stats, _index) => {
+                    println!("{}->{}", self.get_name(), stats.show())
+                }
+                AgentType::NonLosingMoveSelector(stats, _index) => {
                     println!("{}->{}", self.get_name(), stats.show())
                 }
             }
@@ -259,6 +270,11 @@ mod agent {
                 }
                 AgentType::WinningMoveSelector(my_stats, _index) => {
                     let moves = board_stage.show_winning_move();
+                    my_stats.increment(clock.get_elapsed_time());
+                    moves
+                }
+                AgentType::NonLosingMoveSelector(my_stats, _index) => {
+                    let moves = board_stage.show_non_losing_move();
                     my_stats.increment(clock.get_elapsed_time());
                     moves
                 }
@@ -348,6 +364,28 @@ mod game_module {
             };
             for action in self.possible_moves() {
                 let new_value = winner_value + (1 << (3 * action.0 + action.1));
+                if check_if_win(new_value) {
+                    return action;
+                }
+            }
+            let mut rng = thread_rng();
+            let moves = *self.possible_moves().choose(&mut rng).unwrap();
+            moves
+        }
+        pub fn show_non_losing_move(&self) -> (u8, u8) {
+            let last_player = &self.x_is_player;
+            let (winner_value, loser_value) = match last_player {
+                PlayerToken::X => (self.x_value, self.o_value),
+                PlayerToken::O => (self.o_value, self.x_value),
+            };
+            for action in self.possible_moves() {
+                let new_value = winner_value + (1 << (3 * action.0 + action.1));
+                if check_if_win(new_value) {
+                    return action;
+                }
+            }
+            for action in self.possible_moves() {
+                let new_value = loser_value + (1 << (3 * action.0 + action.1));
                 if check_if_win(new_value) {
                     return action;
                 }
