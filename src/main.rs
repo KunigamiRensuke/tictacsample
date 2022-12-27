@@ -99,12 +99,14 @@ mod environent {
                 }
             );
             println!(
-                "Total wins by Agent1:{} {}",
+                "Total wins by Agent1({}):{} {}",
+                self.agent_1.get_name(),
                 self.agent1_win,
                 win_percentage!(self.agent1_win, self.game_count)
             );
             println!(
-                "Total wins by Agent2:{} {}",
+                "Total wins by Agent2({}):{} {}",
+                self.agent_2.get_name(),
                 self.agent2_win,
                 win_percentage!(self.agent2_win, self.game_count)
             );
@@ -125,12 +127,25 @@ fn get_agents_to_play() -> (agent::AgentType, agent::AgentType, u32) {
     );
     let mut user_input = String::new();
     io::stdin().read_line(&mut user_input).unwrap();
-    let numbers: Vec<agent::AgentType> = user_input
-        .split_whitespace()
-        .enumerate()
-        .map(|(i, x)| agent::AgentType::create_agent_from_id(x.parse::<u32>().unwrap(), i).unwrap())
-        .collect();
-    let (agent_1, agent_2) = (*numbers.first().unwrap(), *numbers.get(1).unwrap());
+    let agent_1 = agent::AgentType::create_agent_from_id(
+        user_input
+            .split_whitespace()
+            .map(|x| x.parse::<u32>().unwrap())
+            .next()
+            .unwrap(),
+        1,
+    )
+    .unwrap();
+    let agent_2 = agent::AgentType::create_agent_from_id(
+        user_input
+            .split_whitespace()
+            .map(|x| x.parse::<u32>().unwrap())
+            .nth(1)
+            .unwrap(),
+        2,
+    )
+    .unwrap();
+
     let turn_count = user_input
         .split_whitespace()
         .map(|x| x.parse::<u32>().unwrap())
@@ -202,14 +217,21 @@ mod agent {
                 _ => None,
             }
         }
+        pub fn get_name(self) -> String {
+            match self {
+                AgentType::Human(_stats, index) => format!("Human agent {}", index),
+                AgentType::Random(_stats, index) => format!("Random agent {}", index),
+                AgentType::WinningMoveSelector(_stats, index) => format!("Winning agent {}", index),
+            }
+        }
         pub fn get_perf_stats(&self) {
             match self {
                 AgentType::Human(_stats, _index) => (),
-                AgentType::Random(stats, index) => {
-                    println!("Random agent {}->{}", index, stats.show())
+                AgentType::Random(stats, _index) => {
+                    println!("{}->{}", self.get_name(), stats.show())
                 }
-                AgentType::WinningMoveSelector(stats, index) => {
-                    println!("Winning agent{}->{}", index, stats.show())
+                AgentType::WinningMoveSelector(stats, _index) => {
+                    println!("{}->{}", self.get_name(), stats.show())
                 }
             }
         }
