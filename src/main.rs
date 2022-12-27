@@ -1,7 +1,7 @@
-#![allow(dead_code, unused_variables)]
+// #![allow(dead_code, unused_variables)]
 use std::io;
 
-use crate::{agent::AgentType, time_module::reformat_nano_time};
+use crate::agent::{AgentType, PerformanceStats};
 fn main() {
     println!(
         "Hello lets play ordinary tic tac toe\n
@@ -9,22 +9,15 @@ fn main() {
         1.Human 2.RandomAgent 3.Chooser Winner 4.Choose no losing 5.MCTS agent 6.MCTS solver"
     );
     let (mut agent_1, mut agent_2, game_count) = get_agents_to_play();
-    let any_human_agent =
-        matches!(agent_1, AgentType::HumanAgent) | matches!(agent_2, AgentType::HumanAgent);
-
-    let (mut agent1_stats, mut agent2_stats) = ((0, 0, 0, 0), (0, 0, 0, 0));
+    let any_human_agent = agent_1.check_human() | agent_2.check_human();
+    let (agent1_stats, agent2_stats) = (PerformanceStats::new(), PerformanceStats::new());
     let (mut agent1_win, mut agent2_win, mut tie) = (0, 0, 0);
-    for game_iteration in 1..=game_count {
+    for _game_iteration in 1..=game_count {
         let mut my_board = game_module::TicTacToeBoard::new();
-        if let AgentType::HumanAgent = agent_1 {
+        if agent_1.check_human() {
             my_board.show_game_stage_and_end(true);
         }
-        let mut turns = 1;
-        loop {
-            if let AgentType::HumanAgent = agent_1 {
-                println!("Enter your move (row , column)");
-            }
-
+        for turns in 1.. {
             let action_chosen = match turns % 2 == 1 {
                 true => agent_1.get_action(&my_board),
                 false => agent_2.get_action(&my_board),
@@ -44,8 +37,8 @@ fn main() {
             };
             let (game_terminal, game_tied) = my_board.show_game_stage_and_end(any_human_agent);
             if game_terminal {
-                get_calculation(agent_1, &mut agent1_stats);
-                get_calculation(agent_2, &mut agent2_stats);
+                get_calculation(agent_1, agent1_stats);
+                get_calculation(agent_2, agent2_stats);
 
                 if game_tied {
                     tie += 1;
@@ -57,7 +50,6 @@ fn main() {
                 }
                 break;
             }
-            turns += 1;
         }
     }
     show_stats(agent_1, agent1_stats, "Agent 1");
@@ -65,34 +57,25 @@ fn main() {
     show_summary(game_count, agent1_win, agent2_win, tie);
 }
 
-fn get_calculation(agent: AgentType, agent_stats: &mut (u128, u128, u128, u128)) {
+fn get_calculation(agent: AgentType, agent_stats: PerformanceStats) {
     match agent {
-        AgentType::HumanAgent => {}
-        AgentType::RandomAgent(a, b, c, d) => {
-            *agent_stats = (
-                agent_stats.0.min(a),
-                agent_stats.1.max(b),
-                agent_stats.2 + c,
-                agent_stats.3 + d,
-            );
-        }
+        AgentType::HumanAgent(_) => {}
+        AgentType::RandomAgent(mut a) => a.update(agent_stats),
     }
 }
 
-fn show_stats(agent: AgentType, agent_stats: (u128, u128, u128, u128), agent_label: &str) {
-    if !matches!(agent, AgentType::HumanAgent) {
-        println!(
-            "{}-> Min:{}, Max:{},Average:{},Runs:{}",
-            agent_label,
-            reformat_nano_time(agent_stats.0),
-            reformat_nano_time(agent_stats.1),
-            reformat_nano_time(((agent_stats.2 as f64) / (agent_stats.3 as f64)) as u128),
-            agent_stats.3
-        );
+fn show_stats(agent: AgentType, agent_stats: PerformanceStats, agent_label: &str) {
+    if !agent.check_human() {
+        println!("{}->{}", agent_label, agent_stats.show());
     }
 }
 
 fn show_summary(game_count: u32, agent1_win: u32, agent2_win: u32, tie: u32) {
+    macro_rules! win_percentage {
+        ($agent1_win:expr, $game_count:expr) => {
+            format!("{:.2}%", 100.0 * $agent1_win as f64 / $game_count as f64)
+        };
+    }
     println!(
         "Total games planned: {}, {}",
         game_count,
@@ -103,20 +86,16 @@ fn show_summary(game_count: u32, agent1_win: u32, agent2_win: u32, tie: u32) {
         }
     );
     println!(
-        "Total wins by Agent1:{} ({:.2}%)",
+        "Total wins by Agent1:{} {}",
         agent1_win,
-        100.0 * agent1_win as f64 / game_count as f64
+        win_percentage!(agent1_win, game_count)
     );
     println!(
-        "Total wins by Agent2:{} ({:.2}%)",
+        "Total wins by Agent2:{} {}",
         agent2_win,
-        100.0 * agent2_win as f64 / game_count as f64
+        win_percentage!(agent2_win, game_count)
     );
-    println!(
-        "Total ties:{} ({:.2}%)",
-        tie,
-        100.0 * tie as f64 / game_count as f64
-    );
+    println!("Total ties:{} {}", tie, win_percentage!(tie, game_count));
 }
 
 fn get_agents_to_play() -> (agent::AgentType, agent::AgentType, u32) {
@@ -125,8 +104,8 @@ fn get_agents_to_play() -> (agent::AgentType, agent::AgentType, u32) {
     let numbers: Vec<agent::AgentType> = user_input
         .split_whitespace()
         .map(|x| match x.parse().unwrap() {
-            1 => agent::AgentType::HumanAgent,
-            _ => agent::AgentType::RandomAgent(0, 0, 0, 0),
+            1 => agent::AgentType::HumanAgent(PerformanceStats::new()),
+            _ => agent::AgentType::RandomAgent(PerformanceStats::new()),
         })
         .collect();
     let (agent_1, agent_2) = (*numbers.first().unwrap(), *numbers.get(1).unwrap());
@@ -140,41 +119,92 @@ fn get_agents_to_play() -> (agent::AgentType, agent::AgentType, u32) {
 
 mod agent {
     use std::io;
+    #[derive(Clone, Copy)]
+    pub(crate) struct PerformanceStats {
+        minimum: u128,
+        maximum: u128,
+        total_time_nanoseconds: u128,
+        runs: u128,
+    }
+    impl PerformanceStats {
+        pub fn new() -> Self {
+            Self {
+                minimum: 0,
+                maximum: 0,
+                total_time_nanoseconds: 0,
+                runs: 0,
+            }
+        }
+        pub fn update(&mut self, other: PerformanceStats) {
+            self.minimum = if self.runs == 0 {
+                other.minimum
+            } else {
+                self.minimum.min(other.minimum)
+            };
+            self.maximum = self.maximum.max(other.maximum);
+            self.total_time_nanoseconds += other.total_time_nanoseconds;
+            self.runs += other.runs
+        }
+        pub fn show(&self) -> String {
+            format!(
+                "Min:{}, Max:{},Average:{},Runs:{}",
+                reformat_nano_time(self.minimum),
+                reformat_nano_time(self.maximum),
+                reformat_nano_time(
+                    ((self.total_time_nanoseconds as f64) / (self.runs as f64)) as u128
+                ),
+                self.runs
+            )
+        }
+        pub fn increment(&mut self, total_time: u128) {
+            self.minimum = if self.runs == 0 {
+                total_time
+            } else {
+                self.minimum.min(total_time)
+            };
+            self.maximum = self.maximum.max(total_time);
+            self.total_time_nanoseconds += total_time;
+            self.runs += 1;
+        }
+    }
 
+    use crate::time_module::reformat_nano_time;
     use crate::{game_module, time_module};
     use rand::seq::SliceRandom;
     use rand::thread_rng;
     #[derive(Clone, Copy)]
     pub(crate) enum AgentType {
-        HumanAgent,
-        RandomAgent(u128, u128, u128, u128),
+        HumanAgent(PerformanceStats),
+        RandomAgent(PerformanceStats),
     }
     impl AgentType {
         pub fn get_action(&mut self, board_stage: &game_module::TicTacToeBoard) -> (u8, u8) {
             let mut clock = time_module::StopWatch::new();
-            match self {
-                AgentType::HumanAgent => get_human_agent_input(),
-                AgentType::RandomAgent(minimum, maximum, total, runs) => {
-                    let mut rng = thread_rng();
-                    let mut total_time = clock.get_elapsed_time();
-                    *minimum = *minimum.min(&mut total_time);
-                    *maximum = *maximum.max(&mut total_time);
-                    *total += total_time;
-                    *runs += 1;
-                    *board_stage.possible_moves().choose(&mut rng).unwrap()
+            let inputs = match self {
+                AgentType::HumanAgent(my_stats) => {
+                    println!("Enter your move (row , column)");
+                    let mut user_input = String::new();
+                    io::stdin().read_line(&mut user_input).unwrap();
+                    let numbers: Vec<u8> = user_input
+                        .split_whitespace()
+                        .map(|x| x.parse().unwrap())
+                        .collect();
+                    let (x, y) = (*numbers.first().unwrap(), *numbers.get(1).unwrap());
+                    my_stats.increment(clock.get_elapsed_time());
+                    (x, y)
                 }
-            }
+                AgentType::RandomAgent(my_stats) => {
+                    let mut rng = thread_rng();
+                    let moves = *board_stage.possible_moves().choose(&mut rng).unwrap();
+                    my_stats.increment(clock.get_elapsed_time());
+                    moves
+                }
+            };
+            inputs
         }
-    }
-    fn get_human_agent_input() -> (u8, u8) {
-        let mut user_input = String::new();
-        io::stdin().read_line(&mut user_input).unwrap();
-        let numbers: Vec<u8> = user_input
-            .split_whitespace()
-            .map(|x| x.parse().unwrap())
-            .collect();
-        let (x, y) = (*numbers.first().unwrap(), *numbers.get(1).unwrap());
-        (x, y)
+        pub fn check_human(&self) -> bool {
+            matches!(self, AgentType::HumanAgent(_))
+        }
     }
 }
 
@@ -271,16 +301,6 @@ mod game_module {
             };
             Ok(result_board)
         }
-        fn reward(&self) -> i8 {
-            if self.check_won_board() {
-                match self.x_is_player {
-                    PlayerToken::X => 1,
-                    PlayerToken::O => -1,
-                }
-            } else {
-                0
-            }
-        }
         pub fn possible_moves(&self) -> Vec<(u8, u8)> {
             let combined_fill = self.x_value | self.o_value;
             let mut points = Vec::new();
@@ -315,9 +335,6 @@ mod game_module {
         fn check_tie_board(&self) -> bool {
             (self.x_value | self.o_value) == (1 << 9) - 1
         }
-        fn check_terminal(&self) -> bool {
-            self.check_won_board() | self.check_tie_board()
-        }
     }
 
     fn get_output_full(output_vec: &[String], human_output: bool) {
@@ -342,19 +359,6 @@ mod time_module {
 
         pub fn get_elapsed_time(&mut self) -> u128 {
             self.start_time.elapsed().as_nanos()
-            // let elapsed_nano = self.start_time.elapsed().as_nanos();
-            // reformat_nano_time(elapsed_nano);
-            // eprintln!("Elapsed time :{}", reformat_nano_time(elapsed_nano));
-            // self.start_time = Instant::now();
-        }
-        pub fn get_partition_time(&mut self, slabs: u128) {
-            let elapsed_nano = self.start_time.elapsed().as_nanos();
-            eprintln!(
-                "Elapsed time :{}, each part took :{}",
-                reformat_nano_time(elapsed_nano),
-                reformat_nano_time(elapsed_nano / slabs)
-            );
-            self.start_time = Instant::now();
         }
     }
 
