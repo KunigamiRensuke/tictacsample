@@ -1,54 +1,105 @@
 #![allow(dead_code, unused_variables)]
 use std::io;
+
+use crate::agent::AgentType;
 fn main() {
     println!(
         "Hello lets play ordinary tic tac toe\n
-        Enter your 2 agents of choice in correct order of play\n
+        Enter your 2 agents of choice in correct order of play and number of turns if any\n
         1.Human 2.RandomAgent 3.Chooser Winner 4.Choose no losing 5.MCTS agent 6.MCTS solver"
     );
-    let (agent_1, agent_2) = get_agents_to_play();
-    let mut my_board = game_module::TicTacToeBoard::new();
-    my_board.show_game_stage_and_end();
-    let mut turns = 1;
-    loop {
-        println!("Enter your move (row , column)");
-        let action_chosen = match turns % 2 == 1 {
-            true => agent_1.get_action(&my_board),
-            false => agent_2.get_action(&my_board),
-        };
-        my_board = match my_board.get_move(action_chosen) {
-            Ok(board) => board,
-            Err(e) => match e.as_str() {
-                "Already placed, try again" => {
-                    println!("{}", e);
-                    continue;
-                }
-                _ => {
-                    println!("{} Exiting", e);
-                    return;
-                }
-            },
-        };
-        let game_terminal = my_board.show_game_stage_and_end();
-        if game_terminal {
-            break;
+    let (agent_1, agent_2, game_count) = get_agents_to_play();
+    let any_human_agent =
+        matches!(agent_1, AgentType::HumanAgent) | matches!(agent_2, AgentType::HumanAgent);
+
+    let (mut agent1_win, mut agent2_win, mut tie) = (0, 0, 0);
+    for game_iteration in 1..=game_count {
+        let mut my_board = game_module::TicTacToeBoard::new();
+        if let AgentType::HumanAgent = agent_1 {
+            my_board.show_game_stage_and_end(true);
         }
-        turns += 1;
+        let mut turns = 1;
+        loop {
+            println!("Enter your move (row , column)");
+            let action_chosen = match turns % 2 == 1 {
+                true => agent_1.get_action(&my_board),
+                false => agent_2.get_action(&my_board),
+            };
+            my_board = match my_board.get_move(action_chosen) {
+                Ok(board) => board,
+                Err(e) => match e.as_str() {
+                    "Already placed, try again" => {
+                        println!("{}", e);
+                        continue;
+                    }
+                    _ => {
+                        println!("{} Exiting", e);
+                        return;
+                    }
+                },
+            };
+            let (game_terminal, game_tied) = my_board.show_game_stage_and_end(any_human_agent);
+            if game_terminal {
+                if game_tied {
+                    tie += 1;
+                } else {
+                    match turns % 2 == 1 {
+                        true => agent1_win += 1,
+                        false => agent2_win += 1,
+                    }
+                }
+                break;
+            }
+            turns += 1;
+        }
     }
+    show_summary(game_count, agent1_win, agent2_win, tie);
 }
 
-fn get_agents_to_play() -> (agent::AgentType, agent::AgentType) {
+fn show_summary(game_count: u32, agent1_win: u32, agent2_win: u32, tie: u32) {
+    println!(
+        "Total games planned{}, {}",
+        game_count,
+        if game_count == (agent1_win + agent2_win + tie) {
+            "All according to plan"
+        } else {
+            "Muda Muda!!"
+        }
+    );
+    println!(
+        "Total wins by Agent1:{} ({:.2})",
+        agent1_win,
+        100.0 * agent1_win as f64 / game_count as f64
+    );
+    println!(
+        "Total wins by Agent2:{} ({:.2})",
+        agent2_win,
+        100.0 * agent2_win as f64 / game_count as f64
+    );
+    println!(
+        "Total ties:{} ({})",
+        tie,
+        100.0 * tie as f64 / game_count as f64
+    );
+}
+
+fn get_agents_to_play() -> (agent::AgentType, agent::AgentType, u32) {
     let mut user_input = String::new();
     io::stdin().read_line(&mut user_input).unwrap();
     let numbers: Vec<agent::AgentType> = user_input
-        .split_ascii_whitespace()
+        .split_whitespace()
         .map(|x| match x.parse().unwrap() {
             1 => agent::AgentType::HumanAgent,
             _ => agent::AgentType::RandomAgent,
         })
         .collect();
     let (agent_1, agent_2) = (*numbers.first().unwrap(), *numbers.get(1).unwrap());
-    (agent_1, agent_2)
+    let turn_count = user_input
+        .split_whitespace()
+        .map(|x| x.parse::<u32>().unwrap())
+        .nth(2)
+        .unwrap_or(1);
+    (agent_1, agent_2, turn_count)
 }
 
 mod agent {
@@ -79,7 +130,7 @@ mod agent {
         let mut user_input = String::new();
         io::stdin().read_line(&mut user_input).unwrap();
         let numbers: Vec<u8> = user_input
-            .split_ascii_whitespace()
+            .split_whitespace()
             .map(|x| x.parse().unwrap())
             .collect();
         let (x, y) = (*numbers.first().unwrap(), *numbers.get(1).unwrap());
@@ -119,37 +170,39 @@ mod game_module {
                 x_is_player: PlayerToken::X,
             }
         }
-        pub fn show_game_stage_and_end(&self) -> bool {
+        pub fn show_game_stage_and_end(&self, human_output: bool) -> (bool, bool) {
             let mut output_vec = Vec::new();
-            output_vec.push(" _ _ _ ".to_string());
-            for i in 0..3u8 {
-                let mut line_vec = Vec::new();
-                for j in 0..3u8 {
-                    let position = 3 * i + j;
-                    let marker = if (self.x_value >> position) & 1 == 1 {
-                        "X"
-                    } else if (self.o_value >> position) & 1 == 1 {
-                        "O"
-                    } else {
-                        " "
-                    };
-                    line_vec.push(marker)
+            if human_output {
+                output_vec.push(" _ _ _ ".to_string());
+                for i in 0..3u8 {
+                    let mut line_vec = Vec::new();
+                    for j in 0..3u8 {
+                        let position = 3 * i + j;
+                        let marker = if (self.x_value >> position) & 1 == 1 {
+                            "X"
+                        } else if (self.o_value >> position) & 1 == 1 {
+                            "O"
+                        } else {
+                            " "
+                        };
+                        line_vec.push(marker)
+                    }
+                    output_vec.push(format!("|{}|", line_vec.join("|")));
                 }
-                output_vec.push(format!("|{}|", line_vec.join("|")));
+                output_vec.push(" ‾ ‾ ‾ ".to_string());
             }
-            output_vec.push(" ‾ ‾ ‾ ".to_string());
             if self.check_won_board() {
                 output_vec.push(format!("{} has won", self.x_is_player.opponent().value()));
-                get_output_full(&output_vec);
-                true
+                get_output_full(&output_vec, human_output);
+                (true, false)
             } else if self.check_tie_board() {
                 output_vec.push("Game has ended in a draw".to_string());
-                get_output_full(&output_vec);
-                true
+                get_output_full(&output_vec, human_output);
+                (true, true)
             } else {
                 output_vec.push(format!("{} to play", self.x_is_player.value()));
-                get_output_full(&output_vec);
-                false
+                get_output_full(&output_vec, human_output);
+                (false, false)
             }
         }
 
@@ -227,8 +280,10 @@ mod game_module {
         }
     }
 
-    fn get_output_full(output_vec: &[String]) {
-        println!("{}", output_vec.join("\n"));
+    fn get_output_full(output_vec: &[String], human_output: bool) {
+        if human_output {
+            println!("{}", output_vec.join("\n"));
+        }
     }
 }
 mod time_module {
