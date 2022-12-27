@@ -1,112 +1,134 @@
 // #![allow(dead_code, unused_variables)]
-use std::io;
-
-use crate::agent::{AgentType, PerformanceStats};
+use crate::environent::Game;
+use std::{io, ops::ControlFlow};
 fn main() {
+    let (agent_1, agent_2, game_count) = get_agents_to_play();
+    let mut first_game = Game::new(agent_1, agent_2, game_count);
+    if let ControlFlow::Break(_) = first_game.start() {
+        return;
+    }
+    let mut second_game = Game::new(agent_2, agent_1, game_count);
+    if let ControlFlow::Break(_) = second_game.start() {
+        return;
+    }
+    println!("Games have ended with no problem!")
+}
+
+mod environent {
+    use std::ops::ControlFlow;
+
+    use crate::{agent::AgentType, game_module};
+
+    pub(crate) struct Game {
+        agent_1: AgentType,
+        agent_2: AgentType,
+        game_count: u32,
+        agent1_win: u32,
+        agent2_win: u32,
+        tie: u32,
+    }
+    impl Game {
+        pub fn new(agent_1: AgentType, agent_2: AgentType, game_count: u32) -> Self {
+            Self {
+                agent_1,
+                agent_2,
+                game_count,
+                agent1_win: 0,
+                agent2_win: 0,
+                tie: 0,
+            }
+        }
+        pub fn start(&mut self) -> ControlFlow<()> {
+            let any_human_agent = self.agent_1.check_human() | self.agent_2.check_human();
+            for _game_iteration in 1..=self.game_count {
+                let mut my_board = game_module::TicTacToeBoard::new();
+                if self.agent_1.check_human() {
+                    my_board.show_game_stage_and_end(true);
+                }
+                for turns in 1.. {
+                    let action_chosen = match turns % 2 == 1 {
+                        true => self.agent_1.get_action(&my_board),
+                        false => self.agent_2.get_action(&my_board),
+                    };
+                    my_board = match my_board.get_move(action_chosen) {
+                        Ok(board) => board,
+                        Err(e) => match e.as_str() {
+                            "Already placed, try again" => {
+                                println!("{}", e);
+                                continue;
+                            }
+                            _ => {
+                                println!("{} Exiting", e);
+                                return ControlFlow::Break(());
+                            }
+                        },
+                    };
+                    let (game_terminal, game_tied) =
+                        my_board.show_game_stage_and_end(any_human_agent);
+                    if game_terminal {
+                        if game_tied {
+                            self.tie += 1;
+                        } else {
+                            match turns % 2 == 1 {
+                                true => self.agent1_win += 1,
+                                false => self.agent2_win += 1,
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+            self.agent_1.get_perf_stats();
+            self.agent_2.get_perf_stats();
+            self.show_summary();
+            ControlFlow::Continue(())
+        }
+        fn show_summary(&self) {
+            macro_rules! win_percentage {
+                ($agent1_win:expr, $game_count:expr) => {
+                    format!("{:.2}%", 100.0 * $agent1_win as f64 / $game_count as f64)
+                };
+            }
+            println!(
+                "Total games planned: {}, {}",
+                self.game_count,
+                if self.game_count == (self.agent1_win + self.agent2_win + self.tie) {
+                    "All according to plan"
+                } else {
+                    "Muda Muda!!"
+                }
+            );
+            println!(
+                "Total wins by Agent1:{} {}",
+                self.agent1_win,
+                win_percentage!(self.agent1_win, self.game_count)
+            );
+            println!(
+                "Total wins by Agent2:{} {}",
+                self.agent2_win,
+                win_percentage!(self.agent2_win, self.game_count)
+            );
+            println!(
+                "Total ties:{} {}",
+                self.tie,
+                win_percentage!(self.tie, self.game_count)
+            );
+        }
+    }
+}
+
+fn get_agents_to_play() -> (agent::AgentType, agent::AgentType, u32) {
     println!(
         "Hello lets play ordinary tic tac toe\n
         Enter your 2 agents of choice in correct order of play and number of turns if any\n
         1.Human 2.RandomAgent 3.Chooser Winner 4.Choose no losing 5.MCTS agent 6.MCTS solver"
     );
-    let (mut agent_1, mut agent_2, game_count) = get_agents_to_play();
-    let any_human_agent = agent_1.check_human() | agent_2.check_human();
-    let (agent1_stats, agent2_stats) = (PerformanceStats::new(), PerformanceStats::new());
-    let (mut agent1_win, mut agent2_win, mut tie) = (0, 0, 0);
-    for _game_iteration in 1..=game_count {
-        let mut my_board = game_module::TicTacToeBoard::new();
-        if agent_1.check_human() {
-            my_board.show_game_stage_and_end(true);
-        }
-        for turns in 1.. {
-            let action_chosen = match turns % 2 == 1 {
-                true => agent_1.get_action(&my_board),
-                false => agent_2.get_action(&my_board),
-            };
-            my_board = match my_board.get_move(action_chosen) {
-                Ok(board) => board,
-                Err(e) => match e.as_str() {
-                    "Already placed, try again" => {
-                        println!("{}", e);
-                        continue;
-                    }
-                    _ => {
-                        println!("{} Exiting", e);
-                        return;
-                    }
-                },
-            };
-            let (game_terminal, game_tied) = my_board.show_game_stage_and_end(any_human_agent);
-            if game_terminal {
-                get_calculation(agent_1, agent1_stats);
-                get_calculation(agent_2, agent2_stats);
-
-                if game_tied {
-                    tie += 1;
-                } else {
-                    match turns % 2 == 1 {
-                        true => agent1_win += 1,
-                        false => agent2_win += 1,
-                    }
-                }
-                break;
-            }
-        }
-    }
-    show_stats(agent_1, agent1_stats, "Agent 1");
-    show_stats(agent_2, agent2_stats, "Agent 2");
-    show_summary(game_count, agent1_win, agent2_win, tie);
-}
-
-fn get_calculation(agent: AgentType, agent_stats: PerformanceStats) {
-    match agent {
-        AgentType::HumanAgent(_) => {}
-        AgentType::RandomAgent(mut a) => a.update(agent_stats),
-    }
-}
-
-fn show_stats(agent: AgentType, agent_stats: PerformanceStats, agent_label: &str) {
-    if !agent.check_human() {
-        println!("{}->{}", agent_label, agent_stats.show());
-    }
-}
-
-fn show_summary(game_count: u32, agent1_win: u32, agent2_win: u32, tie: u32) {
-    macro_rules! win_percentage {
-        ($agent1_win:expr, $game_count:expr) => {
-            format!("{:.2}%", 100.0 * $agent1_win as f64 / $game_count as f64)
-        };
-    }
-    println!(
-        "Total games planned: {}, {}",
-        game_count,
-        if game_count == (agent1_win + agent2_win + tie) {
-            "All according to plan"
-        } else {
-            "Muda Muda!!"
-        }
-    );
-    println!(
-        "Total wins by Agent1:{} {}",
-        agent1_win,
-        win_percentage!(agent1_win, game_count)
-    );
-    println!(
-        "Total wins by Agent2:{} {}",
-        agent2_win,
-        win_percentage!(agent2_win, game_count)
-    );
-    println!("Total ties:{} {}", tie, win_percentage!(tie, game_count));
-}
-
-fn get_agents_to_play() -> (agent::AgentType, agent::AgentType, u32) {
     let mut user_input = String::new();
     io::stdin().read_line(&mut user_input).unwrap();
     let numbers: Vec<agent::AgentType> = user_input
         .split_whitespace()
-        .map(|x| match x.parse().unwrap() {
-            1 => agent::AgentType::HumanAgent(PerformanceStats::new()),
-            _ => agent::AgentType::RandomAgent(PerformanceStats::new()),
-        })
+        .enumerate()
+        .map(|(i, x)| agent::AgentType::create_agent_from_id(x.parse::<u32>().unwrap(), i).unwrap())
         .collect();
     let (agent_1, agent_2) = (*numbers.first().unwrap(), *numbers.get(1).unwrap());
     let turn_count = user_input
@@ -135,19 +157,9 @@ mod agent {
                 runs: 0,
             }
         }
-        pub fn update(&mut self, other: PerformanceStats) {
-            self.minimum = if self.runs == 0 {
-                other.minimum
-            } else {
-                self.minimum.min(other.minimum)
-            };
-            self.maximum = self.maximum.max(other.maximum);
-            self.total_time_nanoseconds += other.total_time_nanoseconds;
-            self.runs += other.runs
-        }
         pub fn show(&self) -> String {
             format!(
-                "Min:{}, Max:{},Average:{},Runs:{}",
+                "Min:{}, Max:{},Average:{},Turns:{}",
                 reformat_nano_time(self.minimum),
                 reformat_nano_time(self.maximum),
                 reformat_nano_time(
@@ -174,14 +186,38 @@ mod agent {
     use rand::thread_rng;
     #[derive(Clone, Copy)]
     pub(crate) enum AgentType {
-        HumanAgent(PerformanceStats),
-        RandomAgent(PerformanceStats),
+        Human(PerformanceStats, usize),
+        Random(PerformanceStats, usize),
+        WinningMoveSelector(PerformanceStats, usize),
     }
     impl AgentType {
+        pub fn create_agent_from_id(id: u32, index: usize) -> Option<AgentType> {
+            match id {
+                1 => Some(AgentType::Human(PerformanceStats::new(), index)),
+                2 => Some(AgentType::Random(PerformanceStats::new(), index)),
+                3 => Some(AgentType::WinningMoveSelector(
+                    PerformanceStats::new(),
+                    index,
+                )),
+                _ => None,
+            }
+        }
+        pub fn get_perf_stats(&self) {
+            match self {
+                AgentType::Human(_stats, _index) => (),
+                AgentType::Random(stats, index) => {
+                    println!("Random agent {}->{}", index, stats.show())
+                }
+                AgentType::WinningMoveSelector(stats, index) => {
+                    println!("Winning agent{}->{}", index, stats.show())
+                }
+            }
+        }
+
         pub fn get_action(&mut self, board_stage: &game_module::TicTacToeBoard) -> (u8, u8) {
             let mut clock = time_module::StopWatch::new();
             let inputs = match self {
-                AgentType::HumanAgent(my_stats) => {
+                AgentType::Human(my_stats, _index) => {
                     println!("Enter your move (row , column)");
                     let mut user_input = String::new();
                     io::stdin().read_line(&mut user_input).unwrap();
@@ -193,9 +229,14 @@ mod agent {
                     my_stats.increment(clock.get_elapsed_time());
                     (x, y)
                 }
-                AgentType::RandomAgent(my_stats) => {
+                AgentType::Random(my_stats, _index) => {
                     let mut rng = thread_rng();
                     let moves = *board_stage.possible_moves().choose(&mut rng).unwrap();
+                    my_stats.increment(clock.get_elapsed_time());
+                    moves
+                }
+                AgentType::WinningMoveSelector(my_stats, _index) => {
+                    let moves = board_stage.show_winning_move();
                     my_stats.increment(clock.get_elapsed_time());
                     moves
                 }
@@ -203,12 +244,14 @@ mod agent {
             inputs
         }
         pub fn check_human(&self) -> bool {
-            matches!(self, AgentType::HumanAgent(_))
+            matches!(self, AgentType::Human(_, _))
         }
     }
 }
 
 mod game_module {
+    use rand::{seq::SliceRandom, thread_rng};
+
     enum PlayerToken {
         X,
         O,
@@ -275,7 +318,22 @@ mod game_module {
                 (false, false)
             }
         }
-
+        pub fn show_winning_move(&self) -> (u8, u8) {
+            let last_player = &self.x_is_player;
+            let winner_value = match last_player {
+                PlayerToken::X => self.x_value,
+                PlayerToken::O => self.o_value,
+            };
+            for action in self.possible_moves() {
+                let new_value = winner_value + (1 << (3 * action.0 + action.1));
+                if check_if_win(new_value) {
+                    return action;
+                }
+            }
+            let mut rng = thread_rng();
+            let moves = *self.possible_moves().choose(&mut rng).unwrap();
+            moves
+        }
         pub fn get_move(&self, action: (u8, u8)) -> Result<TicTacToeBoard, String> {
             if !((action.0 < 3) & (action.1 < 3)) {
                 return Err("Wrong coordinates".to_owned());
@@ -320,21 +378,25 @@ mod game_module {
                 PlayerToken::X => self.x_value,
                 PlayerToken::O => self.o_value,
             };
-            let three_in_a_row = 0b111;
-            let row_condition = (winner_value & three_in_a_row == three_in_a_row)
-                | ((winner_value >> 3) & three_in_a_row == three_in_a_row)
-                | ((winner_value >> 6) & three_in_a_row == three_in_a_row);
-            let column_condition =
-                (winner_value & (winner_value >> 3) & (winner_value >> 6) & three_in_a_row) > 0;
-            let left_diagonal_condition =
-                ((winner_value & (winner_value >> 4) & (winner_value >> 8)) & 1) > 0;
-            let right_diagonal_condition =
-                (((winner_value >> 2) & (winner_value >> 4) & (winner_value >> 6)) & 1) > 0;
-            row_condition | column_condition | left_diagonal_condition | right_diagonal_condition
+            check_if_win(winner_value)
         }
         fn check_tie_board(&self) -> bool {
             (self.x_value | self.o_value) == (1 << 9) - 1
         }
+    }
+
+    fn check_if_win(winner_value: u16) -> bool {
+        let three_in_a_row = 0b111;
+        let row_condition = (winner_value & three_in_a_row == three_in_a_row)
+            | ((winner_value >> 3) & three_in_a_row == three_in_a_row)
+            | ((winner_value >> 6) & three_in_a_row == three_in_a_row);
+        let column_condition =
+            (winner_value & (winner_value >> 3) & (winner_value >> 6) & three_in_a_row) > 0;
+        let left_diagonal_condition =
+            ((winner_value & (winner_value >> 4) & (winner_value >> 8)) & 1) > 0;
+        let right_diagonal_condition =
+            (((winner_value >> 2) & (winner_value >> 4) & (winner_value >> 6)) & 1) > 0;
+        row_condition | column_condition | left_diagonal_condition | right_diagonal_condition
     }
 
     fn get_output_full(output_vec: &[String], human_output: bool) {
