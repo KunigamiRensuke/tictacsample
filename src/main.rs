@@ -1,4 +1,4 @@
-// #![allow(dead_code, unused_variables)]
+#![allow(dead_code, unused_variables)]
 use crate::environent::Game;
 use std::{io, ops::ControlFlow};
 fn main() {
@@ -196,7 +196,7 @@ mod agent {
     }
 
     use crate::time_module::reformat_nano_time;
-    use crate::{game_module, time_module, monte_carlo_tree_search};
+    use crate::{game_module, monte_carlo_tree_search, time_module};
     use rand::seq::SliceRandom;
     use rand::thread_rng;
     #[derive(Clone, Copy)]
@@ -287,7 +287,7 @@ mod agent {
                     moves
                 }
                 AgentType::MCTSAgent(my_stats, _index) => {
-                    let moves = monte_carlo_tree_search::tree_searcher(board_stage.clone(), 50);
+                    let moves = monte_carlo_tree_search::tree_searcher(board_stage.clone(), 100);
                     my_stats.increment(clock.get_elapsed_time());
                     moves
                 }
@@ -381,11 +381,12 @@ mod monte_carlo_tree_search {
         fn rollout(&self) -> i32 {
             let mut rng = thread_rng();
             let mut state = self.state.clone();
+            let original_state = self.state.clone();
             while !state.game_over() {
                 let action = *state.possible_moves().choose(&mut rng).unwrap();
                 state = state.get_move(action).unwrap();
             }
-            state.reward()
+            state.reward() * (if state.x_plays()==original_state.x_plays()  {-1} else {1})
         }
         fn update(&mut self, reward: i32) {
             self.visits += 1;
@@ -401,9 +402,9 @@ mod monte_carlo_tree_search {
         time_limit_in_milli: u128,
     ) -> (u8, u8) {
         let start_time = SystemTime::now();
+        let multiplier = if beginning_state.x_plays() {1} else {-1};
         let mut tree_graph = Vec::new();
         let starter = Node::new(beginning_state, tree_graph.len());
-        // let mut child_selected = None;
         tree_graph.push(starter);
         while start_time.elapsed().unwrap().as_millis() < time_limit_in_milli {
             let mut index = 0;
@@ -433,9 +434,9 @@ mod monte_carlo_tree_search {
                 history.push(index);
                 leaf = tree_graph.get(index).unwrap();
             }
-            let reward = leaf.rollout();
-            for node_index in history {
-                tree_graph[node_index].update(reward);
+            let reward = leaf.rollout() * multiplier ;
+            for (index, node_index) in history.iter().rev().enumerate() {
+                tree_graph[*node_index].update(if index % 2 == 0 { reward } else { -reward });
             }
         }
         let child_selected = tree_graph[0]
@@ -590,6 +591,9 @@ mod game_module {
                 }
             }
             points
+        }
+        pub fn x_plays(&self)->bool{
+            matches!(self.x_is_player, PlayerToken::X)
         }
         fn check_won_board(&self) -> bool {
             let last_player = self.x_is_player.opponent();
