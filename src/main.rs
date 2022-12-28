@@ -196,7 +196,7 @@ mod agent {
     }
 
     use crate::time_module::reformat_nano_time;
-    use crate::{game_module, time_module};
+    use crate::{game_module, time_module, monte_carlo_tree_search};
     use rand::seq::SliceRandom;
     use rand::thread_rng;
     #[derive(Clone, Copy)]
@@ -287,7 +287,7 @@ mod agent {
                     moves
                 }
                 AgentType::MCTSAgent(my_stats, _index) => {
-                    let moves = board_stage.show_non_losing_move();
+                    let moves = monte_carlo_tree_search::tree_searcher(board_stage.clone(), 50);
                     my_stats.increment(clock.get_elapsed_time());
                     moves
                 }
@@ -303,124 +303,145 @@ mod agent {
 mod monte_carlo_tree_search {
     use std::time::SystemTime;
 
-    use rand::seq::SliceRandom;
+    use rand::{seq::SliceRandom, thread_rng, Rng};
 
     use crate::game_module;
-    #[derive(Clone, Copy)]
+    #[derive(Clone)]
     struct Node {
         state: game_module::TicTacToeBoard,
-        parent: Option<Box<Node>>,
+        parent_location: Option<usize>,
         parent_action: Option<(u8, u8)>,
-        children: Vec<Node>,
+        position: usize,
+        children: Option<(usize, usize)>,
         wins: i32,
         visits: u32,
     }
     impl Node {
-        fn new(state: game_module::TicTacToeBoard) -> Self {
-            Self {
+        fn new(state: game_module::TicTacToeBoard, position_to_push: usize) -> Self {
+            Node {
                 state,
-                parent: None,
-                children: Vec::new(),
+                parent_location: None,
                 parent_action: None,
+                children: None,
+                position: position_to_push,
                 wins: 0,
                 visits: 0,
             }
         }
-        fn fully_expanded(&self) -> bool {
-            self.state.possible_moves().len() == self.children.len()
+        fn child_creation(
+            state: game_module::TicTacToeBoard,
+            parent_location: usize,
+            parent_action: (u8, u8),
+            position_to_push: usize,
+        ) -> Node {
+            Node {
+                state,
+                parent_location: Some(parent_location),
+                parent_action: Some(parent_action),
+                children: None,
+                position: position_to_push,
+                wins: 0,
+                visits: 0,
+            }
         }
         fn terminal(&self) -> bool {
             self.state.game_over()
+        }
+        fn fully_expanded(&self) -> bool {
+            if let Some((a, b)) = self.children {
+                return self.state.possible_moves().len() == b - a;
+            }
+            false
+        }
+
+        fn ucb1(&self, parent_visits: u32, select_ending: bool) -> f64 {
+            if select_ending {
+                return self.wins as f64;
+            }
+            let q = self.wins as f64 / self.visits as f64;
+            let p = 2.0 * (parent_visits as f64).ln() / (self.visits as f64 + 0.001);
+            q + p.sqrt()
+        }
+        fn select_child(&self, tree_graph: Vec<Node>, select_ending: bool) -> Option<usize> {
+            let parent_visits = self.visits;
+            let mut max_ucb1 = f64::NEG_INFINITY;
+            let mut selected = None;
+            if let Some((start, end)) = self.children {
+                for child in start..end {
+                    let ucb1 = tree_graph[child].ucb1(parent_visits, select_ending);
+                    if ucb1 > max_ucb1 {
+                        max_ucb1 = ucb1;
+                        selected = Some(child)
+                    }
+                }
+            }
+
+            selected
+        }
+        fn rollout(&self) -> i32 {
+            let mut rng = thread_rng();
+            let mut state = self.state.clone();
+            while !state.game_over() {
+                let action = *state.possible_moves().choose(&mut rng).unwrap();
+                state = state.get_move(action).unwrap();
+            }
+            state.reward()
         }
         fn update(&mut self, reward: i32) {
             self.visits += 1;
             self.wins += reward;
         }
-        fn ucb1(&self, parent_visits: u32) -> f64 {
-            let q = self.wins as f64 / self.visits as f64;
-            let p = 2.0 * (parent_visits as f64).ln() / self.visits as f64;
-            q + p.sqrt()
+        fn refactor_children(&mut self, initial: usize, ending: usize) {
+            self.children = Some((initial, ending))
         }
-        fn best_move(&self) -> (u8, u8) {
-            self.children
-                .iter()
-                .max_by_key(|c| c.wins)
-                .unwrap()
-                .parent_action
-                .unwrap()
-        }
+    }
 
-        fn select_child(&mut self) -> &mut Node {
-            let parent_visits = self.visits;
-            let mut max_ucb1 = f64::NEG_INFINITY;
-            let mut selected = None;
-            for child in &mut self.children {
-                let ucb1 = child.ucb1(parent_visits);
-                if ucb1 > max_ucb1 {
-                    max_ucb1 = ucb1;
-                    selected = Some(child);
+    pub(crate) fn tree_searcher(
+        beginning_state: game_module::TicTacToeBoard,
+        time_limit_in_milli: u128,
+    ) -> (u8, u8) {
+        let start_time = SystemTime::now();
+        let mut tree_graph = Vec::new();
+        let starter = Node::new(beginning_state, tree_graph.len());
+        // let mut child_selected = None;
+        tree_graph.push(starter);
+        while start_time.elapsed().unwrap().as_millis() < time_limit_in_milli {
+            let mut index = 0;
+            let mut leaf = tree_graph.get(index).unwrap();
+            let mut history = Vec::new();
+            history.push(index);
+            while !leaf.terminal() & leaf.fully_expanded() {
+                index = leaf.select_child(tree_graph.clone(), false).unwrap();
+                history.push(index);
+                leaf = tree_graph.get(index).unwrap();
+            }
+            if !leaf.terminal() {
+                let initial_position = tree_graph.len();
+                let current_state = leaf.state.clone();
+                for (location, action) in current_state.possible_moves().iter().enumerate() {
+                    tree_graph.push(Node::child_creation(
+                        current_state.get_move(*action).unwrap(),
+                        index,
+                        *action,
+                        location,
+                    ));
                 }
+                let final_position = tree_graph.len();
+                tree_graph[index].refactor_children(initial_position, final_position);
+                let mut rng = thread_rng();
+                let index = rng.gen_range(initial_position, final_position);
+                history.push(index);
+                leaf = tree_graph.get(index).unwrap();
             }
-            if let Some(child) = selected {
-                return child;
-            }
-            let mut rng = rand::thread_rng();
-            let mut moves = self.state.possible_moves();
-            let move_place = *moves.choose(&mut rng).unwrap();
-            let new_state = self.state.get_move(move_place).unwrap();
-            let mut new_node = Node::new(new_state);
-            new_node.parent = Some(Box::new(self.clone()));
-            new_node.parent_action = Some(move_place);
-            self.children.push(new_node.clone());
-            return self.children.last_mut().unwrap();
-        }
-        fn backpropagate(mut history: Vec<&mut Node>, reward: i32) {
-            while let Some(node) = history.pop() {
-                node.update(reward);
+            let reward = leaf.rollout();
+            for node_index in history {
+                tree_graph[node_index].update(reward);
             }
         }
-        fn expand(node: &mut Node) -> &mut Node {
-            let mut moves = node.state.possible_moves();
-            let mut rng = rand::thread_rng();
-            moves.shuffle(&mut rng);
-            let move_place = moves[0];
-            let new_state = node.state.get_move(move_place).unwrap();
-            let mut new_node = Node::new(new_state);
-            new_node.parent = Some(Box::new(node.clone()));
-            node.children.push(new_node.clone());
-            return node.children.last_mut().unwrap();
-        }
-
-        fn rollout(node: &Node) -> i32 {
-            let mut rng = rand::thread_rng();
-            let mut state = node.state.clone();
-            while !state.game_over() {
-                let moves = state.possible_moves();
-                let move_place = *moves.choose(&mut rng).unwrap();
-                state = state.get_move(move_place).unwrap();
-            }
-            state.reward()
-        }
-
-        fn monte_carlo_tree_search(&mut self) -> (u8, u8) {
-            while SystemTime::now().elapsed().unwrap().as_millis() < 1000 {
-                let mut leaf = &mut *self;
-                let mut history = Vec::new();
-
-                while !leaf.terminal() && !leaf.fully_expanded() {
-                    history.push(leaf);
-                    leaf = leaf.select_child();
-                }
-
-                if !leaf.terminal() {
-                    leaf = Self::expand(leaf);
-                }
-
-                let reward = Self::rollout(&leaf);
-                Self::backpropagate(history, reward);
-            }
-            self.best_move()
-        }
+        let child_selected = tree_graph[0]
+            .select_child(tree_graph.clone(), true)
+            .unwrap();
+        tree_graph[child_selected].parent_action.unwrap()
     }
 }
 
