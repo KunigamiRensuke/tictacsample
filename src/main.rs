@@ -439,6 +439,7 @@ mod monte_carlo_tree_search {
                 tree_graph[*node_index].update(if index % 2 == 0 { reward } else { -reward });
             }
         }
+        println!("Total MCTS nodes computed:{}", tree_graph.len());
         let child_selected = tree_graph[0]
             .select_child(tree_graph.clone(), true)
             .unwrap();
