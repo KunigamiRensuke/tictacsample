@@ -205,6 +205,7 @@ mod agent {
         Random(PerformanceStats, usize),
         WinningMoveSelector(PerformanceStats, usize),
         NonLosingMoveSelector(PerformanceStats, usize),
+        MCTSAgent(PerformanceStats, usize),
     }
     impl AgentType {
         pub fn create_agent_from_id(id: u32, index: usize) -> Option<AgentType> {
@@ -219,6 +220,7 @@ mod agent {
                     PerformanceStats::new(),
                     index,
                 )),
+                5 => Some(AgentType::MCTSAgent(PerformanceStats::new(), index)),
                 _ => None,
             }
         }
@@ -229,6 +231,9 @@ mod agent {
                 AgentType::WinningMoveSelector(_stats, index) => format!("Winning agent {}", index),
                 AgentType::NonLosingMoveSelector(_stats, index) => {
                     format!("Non losing agent {}", index)
+                }
+                AgentType::MCTSAgent(_stats, index) => {
+                    format!("Monte carlo agent {}", index)
                 }
             }
         }
@@ -242,6 +247,9 @@ mod agent {
                     println!("{}->{}", self.get_name(), stats.show())
                 }
                 AgentType::NonLosingMoveSelector(stats, _index) => {
+                    println!("{}->{}", self.get_name(), stats.show())
+                }
+                AgentType::MCTSAgent(stats, _index) => {
                     println!("{}->{}", self.get_name(), stats.show())
                 }
             }
@@ -274,6 +282,11 @@ mod agent {
                     moves
                 }
                 AgentType::NonLosingMoveSelector(my_stats, _index) => {
+                    let moves = board_stage.show_non_losing_move();
+                    my_stats.increment(clock.get_elapsed_time());
+                    moves
+                }
+                AgentType::MCTSAgent(my_stats, _index) => {
                     let moves = board_stage.show_non_losing_move();
                     my_stats.increment(clock.get_elapsed_time());
                     moves
