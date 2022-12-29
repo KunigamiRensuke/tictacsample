@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":[["tree_searcher","Searches the game tree  to get the most optimal action"]],"struct":[["Node",""]]};
