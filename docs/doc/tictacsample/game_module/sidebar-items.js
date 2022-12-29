@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":[["PlayerToken",""]],"fn":[["check_if_win","Checks if the given representation is winning"],["get_output_full","Gives output of vector only if human asks"]],"struct":[["TicTacToeBoard",""]]};
