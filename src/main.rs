@@ -34,6 +34,7 @@ mod environment {
         tie: u32,
     }
     impl Game {
+        /// Creates a new game implementation
         pub fn new(agent_1: AgentType, agent_2: AgentType, game_count: u32) -> Self {
             Self {
                 agent_1,
@@ -44,6 +45,7 @@ mod environment {
                 tie: 0,
             }
         }
+        /// Starts the game with agents mentioned
         pub fn start(&mut self) -> ControlFlow<()> {
             let any_human_agent = self.agent_1.check_human() | self.agent_2.check_human();
             for _game_iteration in 1..=self.game_count {
@@ -89,6 +91,7 @@ mod environment {
             self.show_summary();
             ControlFlow::Continue(())
         }
+        /// Gives summary of win rate vs ties
         fn show_summary(&self) {
             macro_rules! win_percentage {
                 ($agent1_win:expr, $game_count:expr) => {
@@ -208,10 +211,15 @@ mod agent {
     use rand::thread_rng;
     #[derive(Clone, Copy)]
     pub(crate) enum AgentType {
+        /// Human agent
         Human(PerformanceStats, usize),
+        /// Random move choosing agent
         Random(PerformanceStats, usize),
+        /// Winnable move prioritising random agent
         WinningMoveSelector(PerformanceStats, usize),
+        /// Non losable move prioritising random agent
         NonLosingMoveSelector(PerformanceStats, usize),
+        /// MCTS method choosing agent
         MCTSAgent(PerformanceStats, usize),
     }
     impl AgentType {
@@ -324,6 +332,7 @@ mod monte_carlo_tree_search {
         visits: u32,
     }
     impl Node {
+        /// Creates a new node
         fn new(state: game_module::TicTacToeBoard, position_to_push: usize) -> Self {
             Node {
                 state,
@@ -335,6 +344,7 @@ mod monte_carlo_tree_search {
                 visits: 0,
             }
         }
+        /// Creates a child
         fn child_creation(
             state: game_module::TicTacToeBoard,
             parent_location: usize,
@@ -351,9 +361,11 @@ mod monte_carlo_tree_search {
                 visits: 0,
             }
         }
+        /// Checks if the node is a terminal node
         fn terminal(&self) -> bool {
             self.state.game_over()
         }
+        /// Checks if the given node is fully expanded
         fn fully_expanded(&self) -> bool {
             if let Some((a, b)) = self.children {
                 return self.state.possible_moves().len() == b - a;
@@ -361,6 +373,7 @@ mod monte_carlo_tree_search {
             false
         }
 
+        /// Gets the max ucb value for a given node
         fn ucb1(&self, parent_visits: u32, select_ending: bool) -> f64 {
             if select_ending {
                 return self.wins as f64;
@@ -369,6 +382,8 @@ mod monte_carlo_tree_search {
             let p = 2.0 * (parent_visits as f64).ln() / (self.visits as f64);
             q + p.sqrt()
         }
+
+        /// Selects the best child to pursue based on ucb values
         fn select_child(&self, tree_graph: Vec<Node>, select_ending: bool) -> Option<usize> {
             let parent_visits = self.visits;
             let mut max_ucb1 = f64::NEG_INFINITY;
@@ -385,6 +400,8 @@ mod monte_carlo_tree_search {
 
             selected
         }
+
+        /// Rolls out a given node and gives the reward for the node
         fn rollout(&self) -> i32 {
             let mut rng = thread_rng();
             let mut state = self.state.clone();
@@ -400,15 +417,19 @@ mod monte_carlo_tree_search {
                     1
                 })
         }
+
+        /// updates the given node based on reward from previous nodes
         fn update(&mut self, reward: i32) {
             self.visits += 1;
             self.wins += reward;
         }
+
+        /// Adds detail of children
         fn refactor_children(&mut self, initial: usize, ending: usize) {
             self.children = Some((initial, ending))
         }
     }
-
+    /// Searches the game tree  to get the most optimal action
     pub(crate) fn tree_searcher(
         beginning_state: game_module::TicTacToeBoard,
         time_limit_in_milli: u128,
@@ -467,12 +488,14 @@ mod game_module {
         O,
     }
     impl PlayerToken {
+        /// Gives the opponent for a given player token
         fn opponent(&self) -> PlayerToken {
             match self {
                 PlayerToken::X => PlayerToken::O,
                 PlayerToken::O => PlayerToken::X,
             }
         }
+        /// Gives string value of a given token.
         fn value(&self) -> &str {
             match self {
                 PlayerToken::X => "X",
@@ -487,6 +510,7 @@ mod game_module {
         x_is_player: PlayerToken,
     }
     impl TicTacToeBoard {
+        /// Creates  a new tic tac toe board
         pub fn new() -> TicTacToeBoard {
             TicTacToeBoard {
                 x_value: 0,
@@ -649,6 +673,7 @@ mod game_module {
         }
     }
 
+    /// Checks if the given representation is winning
     fn check_if_win(winner_value: u16) -> bool {
         let three_in_a_row = 0b111;
         let row_condition = (winner_value & three_in_a_row == three_in_a_row)
@@ -662,7 +687,7 @@ mod game_module {
             (((winner_value >> 2) & (winner_value >> 4) & (winner_value >> 6)) & 1) > 0;
         row_condition | column_condition | left_diagonal_condition | right_diagonal_condition
     }
-
+    /// Gives output of vector only if human asks
     fn get_output_full(output_vec: &[String], human_output: bool) {
         if human_output {
             println!("{}", output_vec.join("\n"));
@@ -676,6 +701,7 @@ mod time_module {
     }
 
     impl StopWatch {
+        /// Creates new StopWatch instance
         pub fn new() -> StopWatch {
             let current_instant = Instant::now();
             StopWatch {
@@ -683,11 +709,13 @@ mod time_module {
             }
         }
 
+        /// Gives the elapsed time since stopwatch is started.
         pub fn get_elapsed_time(&mut self) -> u128 {
             self.start_time.elapsed().as_nanos()
         }
     }
 
+    /// Reformats the time in nano seconds to reasonable measure of time.
     pub fn reformat_nano_time(elapsed: u128) -> String {
         let ten = 10u128;
         let elapsed_float = elapsed as f64;
