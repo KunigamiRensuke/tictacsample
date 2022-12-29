@@ -1,5 +1,5 @@
 #![allow(dead_code, unused_variables)]
-use crate::environent::Game;
+use crate::environment::Game;
 use std::{io, ops::ControlFlow};
 fn main() {
     game_play()
@@ -20,7 +20,7 @@ fn game_play() {
     println!("Games have ended with no problem!")
 }
 
-mod environent {
+mod environment {
     use std::ops::ControlFlow;
 
     use crate::{agent::AgentType, game_module};
