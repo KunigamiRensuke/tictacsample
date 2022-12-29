@@ -2,6 +2,12 @@
 use crate::environent::Game;
 use std::{io, ops::ControlFlow};
 fn main() {
+    game_play()
+}
+
+/// To create gameplay environment to test two agents for certain number of gamecount(default 1)
+/// This plays agent 1 vs agent 2 and shows their win counts in percent and also the run time
+fn game_play() {
     let (agent_1, agent_2, game_count) = get_agents_to_play();
     let mut first_game = Game::new(agent_1, agent_2, game_count);
     if let ControlFlow::Break(_) = first_game.start() {
@@ -119,6 +125,7 @@ mod environent {
     }
 }
 
+/// Function to obtain from user agents to play and game count
 fn get_agents_to_play() -> (agent::AgentType, agent::AgentType, u32) {
     println!(
         "Hello lets play ordinary tic tac toe\n
@@ -359,7 +366,7 @@ mod monte_carlo_tree_search {
                 return self.wins as f64;
             }
             let q = self.wins as f64 / self.visits as f64;
-            let p = 2.0 * (parent_visits as f64).ln() / (self.visits as f64 + 0.001);
+            let p = 2.0 * (parent_visits as f64).ln() / (self.visits as f64);
             q + p.sqrt()
         }
         fn select_child(&self, tree_graph: Vec<Node>, select_ending: bool) -> Option<usize> {
@@ -386,7 +393,12 @@ mod monte_carlo_tree_search {
                 let action = *state.possible_moves().choose(&mut rng).unwrap();
                 state = state.get_move(action).unwrap();
             }
-            state.reward() * (if state.x_plays()==original_state.x_plays()  {-1} else {1})
+            state.reward()
+                * (if state.x_plays() == original_state.x_plays() {
+                    -1
+                } else {
+                    1
+                })
         }
         fn update(&mut self, reward: i32) {
             self.visits += 1;
@@ -402,7 +414,7 @@ mod monte_carlo_tree_search {
         time_limit_in_milli: u128,
     ) -> (u8, u8) {
         let start_time = SystemTime::now();
-        let multiplier = if beginning_state.x_plays() {1} else {-1};
+        let multiplier = if beginning_state.x_plays() { 1 } else { -1 };
         let mut tree_graph = Vec::new();
         let starter = Node::new(beginning_state, tree_graph.len());
         tree_graph.push(starter);
@@ -434,7 +446,7 @@ mod monte_carlo_tree_search {
                 history.push(index);
                 leaf = tree_graph.get(index).unwrap();
             }
-            let reward = leaf.rollout() * multiplier ;
+            let reward = leaf.rollout() * multiplier;
             for (index, node_index) in history.iter().rev().enumerate() {
                 tree_graph[*node_index].update(if index % 2 == 0 { reward } else { -reward });
             }
@@ -482,6 +494,7 @@ mod game_module {
                 x_is_player: PlayerToken::X,
             }
         }
+        /// Shows the game stage and whether it has ended
         pub fn show_game_stage_and_end(&self, human_output: bool) -> (bool, bool) {
             let mut output_vec = Vec::new();
             if human_output {
@@ -517,6 +530,7 @@ mod game_module {
                 (false, false)
             }
         }
+        /// Gets the winning move if it exists otherwise shows a random move
         pub fn show_winning_move(&self) -> (u8, u8) {
             let last_player = &self.x_is_player;
             let winner_value = match last_player {
@@ -533,28 +547,36 @@ mod game_module {
             let moves = *self.possible_moves().choose(&mut rng).unwrap();
             moves
         }
+        /// Get the non losing move if it exists(winning move first, otherwise block opponent winning move),
+        ///  otherwise gives a random move
         pub fn show_non_losing_move(&self) -> (u8, u8) {
             let last_player = &self.x_is_player;
             let (winner_value, loser_value) = match last_player {
                 PlayerToken::X => (self.x_value, self.o_value),
                 PlayerToken::O => (self.o_value, self.x_value),
             };
+            let mut non_losing_move = None;
             for action in self.possible_moves() {
                 let new_value = winner_value + (1 << (3 * action.0 + action.1));
                 if check_if_win(new_value) {
                     return action;
                 }
-            }
-            for action in self.possible_moves() {
-                let new_value = loser_value + (1 << (3 * action.0 + action.1));
-                if check_if_win(new_value) {
-                    return action;
+                if non_losing_move.is_none() {
+                    let new_value = loser_value + (1 << (3 * action.0 + action.1));
+                    if check_if_win(new_value) {
+                        non_losing_move = Some(action)
+                    }
                 }
+            }
+            if let Some(good_move) = non_losing_move {
+                return good_move;
             }
             let mut rng = thread_rng();
             let moves = *self.possible_moves().choose(&mut rng).unwrap();
             moves
         }
+        /// Gives a new board when given an action.
+        /// Can err when user gives wrong move
         pub fn get_move(&self, action: (u8, u8)) -> Result<TicTacToeBoard, String> {
             if !((action.0 < 3) & (action.1 < 3)) {
                 return Err("Wrong coordinates".to_owned());
@@ -580,6 +602,7 @@ mod game_module {
             };
             Ok(result_board)
         }
+        /// Generates the list of possible moves
         pub fn possible_moves(&self) -> Vec<(u8, u8)> {
             let combined_fill = self.x_value | self.o_value;
             let mut points = Vec::new();
@@ -593,9 +616,10 @@ mod game_module {
             }
             points
         }
-        pub fn x_plays(&self)->bool{
+        pub fn x_plays(&self) -> bool {
             matches!(self.x_is_player, PlayerToken::X)
         }
+        /// Check if board has been won
         fn check_won_board(&self) -> bool {
             let last_player = self.x_is_player.opponent();
             let winner_value = match last_player {
@@ -604,12 +628,15 @@ mod game_module {
             };
             check_if_win(winner_value)
         }
+        /// Check if board has been tied
         fn check_tie_board(&self) -> bool {
             (self.x_value | self.o_value) == (1 << 9) - 1
         }
+        /// Check if board game is over
         pub fn game_over(&self) -> bool {
             self.check_won_board() | self.check_tie_board()
         }
+        /// Gives a reward assuming player is X
         pub fn reward(&self) -> i32 {
             if self.check_won_board() {
                 if let PlayerToken::X = self.x_is_player.opponent() {
