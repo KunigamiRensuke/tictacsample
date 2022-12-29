@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":[["reformat_nano_time","Reformats the time in nano seconds to reasonable measure of time."]],"struct":[["StopWatch",""]]};
