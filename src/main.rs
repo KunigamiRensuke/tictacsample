@@ -207,8 +207,6 @@ mod agent {
 
     use crate::time_module::reformat_nano_time;
     use crate::{game_module, monte_carlo_tree_search, time_module};
-    use rand::seq::SliceRandom;
-    use rand::thread_rng;
     #[derive(Clone, Copy)]
     pub(crate) enum AgentType {
         /// Human agent
@@ -286,8 +284,7 @@ mod agent {
                     (x, y)
                 }
                 AgentType::Random(my_stats, _index) => {
-                    let mut rng = thread_rng();
-                    let moves = *board_stage.possible_moves().choose(&mut rng).unwrap();
+                    let moves = board_stage.get_random_move();
                     my_stats.increment(clock.get_elapsed_time());
                     moves
                 }
@@ -302,7 +299,7 @@ mod agent {
                     moves
                 }
                 AgentType::MCTSAgent(my_stats, _index) => {
-                    let moves = monte_carlo_tree_search::tree_searcher(board_stage.clone(), 100);
+                    let moves = monte_carlo_tree_search::tree_searcher(board_stage.clone(), 48);
                     my_stats.increment(clock.get_elapsed_time());
                     moves
                 }
@@ -472,7 +469,7 @@ mod monte_carlo_tree_search {
                 tree_graph[*node_index].update(if index % 2 == 0 { reward } else { -reward });
             }
         }
-        println!("Total MCTS nodes computed:{}", tree_graph.len());
+        // println!("Total MCTS nodes computed:{}", tree_graph.len());
         let child_selected = tree_graph[0]
             .select_child(tree_graph.clone(), true)
             .unwrap();
@@ -554,6 +551,12 @@ mod game_module {
                 (false, false)
             }
         }
+
+        pub fn get_random_move(&self) -> (u8, u8) {
+            let mut rng = thread_rng();
+            let moves = *self.possible_moves().choose(&mut rng).unwrap();
+            moves
+        }
         /// Gets the winning move if it exists otherwise shows a random move
         pub fn show_winning_move(&self) -> (u8, u8) {
             let last_player = &self.x_is_player;
@@ -567,9 +570,7 @@ mod game_module {
                     return action;
                 }
             }
-            let mut rng = thread_rng();
-            let moves = *self.possible_moves().choose(&mut rng).unwrap();
-            moves
+            self.get_random_move()
         }
         /// Get the non losing move if it exists(winning move first, otherwise block opponent winning move),
         ///  otherwise gives a random move
@@ -595,9 +596,7 @@ mod game_module {
             if let Some(good_move) = non_losing_move {
                 return good_move;
             }
-            let mut rng = thread_rng();
-            let moves = *self.possible_moves().choose(&mut rng).unwrap();
-            moves
+            self.get_random_move()
         }
         /// Gives a new board when given an action.
         /// Can err when user gives wrong move
