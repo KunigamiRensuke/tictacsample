@@ -401,13 +401,13 @@ mod monte_carlo_tree_search {
         /// Rolls out a given node and gives the reward for the node
         fn rollout(&self) -> i32 {
             let mut state = self.state.clone();
-            let original_state = self.state.clone();
+            let original_state_play = self.state.x_plays();
             while !state.game_over() {
                 let action = state.get_random_move();
                 state = state.get_move(action).unwrap();
             }
             state.reward()
-                * (if state.x_plays() == original_state.x_plays() {
+                * (if state.x_plays() == original_state_play {
                     -1
                 } else {
                     1
