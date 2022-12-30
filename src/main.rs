@@ -320,12 +320,19 @@ mod monte_carlo_tree_search {
     use crate::game_module;
     #[derive(Clone)]
     struct Node {
+        /// Current node state
         state: game_module::TicTacToeBoard,
+        /// Parent location of node if it exists
         parent_location: Option<usize>,
+        /// Parent action if any which has led to current node
         parent_action: Option<(u8, u8)>,
+        /// Position in the index
         position: usize,
+        /// Range of children positions
         children: Option<(usize, usize)>,
+        /// Win count based on reward
         wins: i32,
+        /// Visits achieved on node
         visits: u32,
     }
     impl Node {
