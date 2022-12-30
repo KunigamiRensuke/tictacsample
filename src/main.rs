@@ -315,7 +315,7 @@ mod agent {
 mod monte_carlo_tree_search {
     use std::time::SystemTime;
 
-    use rand::{seq::SliceRandom, thread_rng, Rng};
+    use rand::{thread_rng, Rng};
 
     use crate::game_module;
     #[derive(Clone)]
@@ -400,11 +400,10 @@ mod monte_carlo_tree_search {
 
         /// Rolls out a given node and gives the reward for the node
         fn rollout(&self) -> i32 {
-            let mut rng = thread_rng();
             let mut state = self.state.clone();
             let original_state = self.state.clone();
             while !state.game_over() {
-                let action = *state.possible_moves().choose(&mut rng).unwrap();
+                let action = state.get_random_move();
                 state = state.get_move(action).unwrap();
             }
             state.reward()
