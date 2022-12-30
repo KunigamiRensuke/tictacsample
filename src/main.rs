@@ -223,8 +223,8 @@ mod agent {
         MCTSAgent(PerformanceStats, usize),
     }
     impl AgentType {
-        pub fn create_agent_from_id(id: u32, index: usize) -> Option<AgentType> {
-            match id {
+        pub fn create_agent_from_id(agent_id_tag: u32, index: usize) -> Option<AgentType> {
+            match agent_id_tag {
                 1 => Some(AgentType::Human(PerformanceStats::new(), index)),
                 2 => Some(AgentType::Random(PerformanceStats::new(), index)),
                 3 => Some(AgentType::WinningMoveSelector(
@@ -691,6 +691,82 @@ mod game_module {
     fn get_output_full(output_vec: &[String], human_output: bool) {
         if human_output {
             println!("{}", output_vec.join("\n"));
+        }
+    }
+    /// Creates a board using a 3 x 3 array of lines
+    pub fn obtain_board(lines: [&str; 3], x_to_play: bool) -> TicTacToeBoard {
+        let joined_lines = lines.join("");
+        let mut x_value = 0;
+        let mut o_value = 0;
+        for i in 0..9 {
+            match joined_lines.as_str().chars().nth(i).unwrap() {
+                'X' => x_value += 1 << i,
+                'O' => o_value += 1 << i,
+                _ => {}
+            }
+        }
+        TicTacToeBoard {
+            x_value,
+            o_value,
+            x_is_player: if x_to_play {
+                PlayerToken::X
+            } else {
+                PlayerToken::O
+            },
+        }
+    }
+    #[cfg(test)]
+    mod tests {
+        use crate::{agent::AgentType, game_module::obtain_board};
+        #[test]
+        fn test_board_creation() {
+            let my_board = ["XXO", "XOO", "   "];
+            let new_board = obtain_board(my_board, true);
+            assert_eq!(new_board.x_plays(), true);
+            assert_eq!(new_board.x_value, 0b1011);
+            assert_eq!(new_board.o_value, 0b110100);
+            new_board.show_game_stage_and_end(true);
+        }
+        #[test]
+        fn test_winning_agent_working() {
+            let my_board = ["XX ", "   ", "   "];
+            let winning_agent_number = 3;
+            let new_board = obtain_board(my_board, true);
+            let mut test_agent = AgentType::create_agent_from_id(winning_agent_number, 1).unwrap();
+            assert_eq!(test_agent.get_action(&new_board), (0, 2));
+
+            let my_board = ["   ", " O ", " O "];
+            let new_board = obtain_board(my_board, false);
+            let mut test_agent = AgentType::create_agent_from_id(winning_agent_number, 2).unwrap();
+            assert_eq!(test_agent.get_action(&new_board), (0, 1));
+
+            let my_board = [" OX", " XO", " O "];
+            let new_board = obtain_board(my_board, true);
+            let mut test_agent = AgentType::create_agent_from_id(winning_agent_number, 3).unwrap();
+            assert_eq!(test_agent.get_action(&new_board), (2, 0));
+        }
+        #[test]
+        fn test_non_losing_agent_working() {
+            let my_board = ["XX ", "   ", "   "];
+            let winning_agent_number = 4;
+            let new_board = obtain_board(my_board, true);
+            let mut test_agent = AgentType::create_agent_from_id(winning_agent_number, 1).unwrap();
+            assert_eq!(test_agent.get_action(&new_board), (0, 2));
+
+            let my_board = ["   ", " O ", " O "];
+            let new_board = obtain_board(my_board, false);
+            let mut test_agent = AgentType::create_agent_from_id(winning_agent_number, 2).unwrap();
+            assert_eq!(test_agent.get_action(&new_board), (0, 1));
+
+            let my_board = [" OX", " XO", " O "];
+            let new_board = obtain_board(my_board, true);
+            let mut test_agent = AgentType::create_agent_from_id(winning_agent_number, 3).unwrap();
+            assert_eq!(test_agent.get_action(&new_board), (2, 0));
+
+            let my_board = [" OX", " O ", "   "];
+            let new_board = obtain_board(my_board, true);
+            let mut test_agent = AgentType::create_agent_from_id(winning_agent_number, 3).unwrap();
+            assert_eq!(test_agent.get_action(&new_board), (2, 1));
         }
     }
 }
