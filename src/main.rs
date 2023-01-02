@@ -1,7 +1,15 @@
 #![allow(dead_code, unused_variables)]
+
 use crate::environment::Game;
 use std::{io, ops::ControlFlow};
 fn main() {
+    // let action = monte_carlo_tree_search::tree_searcher(
+    //     game_module::obtain_board(["XX ", "   ", "   "], true),
+    //     50,
+    //     Some(50),
+    // );
+    // println!("{:?}", action);
+
     game_play()
 }
 
@@ -289,17 +297,24 @@ mod agent {
                     moves
                 }
                 AgentType::WinningMoveSelector(my_stats, _index) => {
-                    let moves = board_stage.show_winning_move();
+                    let moves = match board_stage.show_winning_move() {
+                        Some(x) => x,
+                        None => board_stage.get_random_move(),
+                    };
                     my_stats.increment(clock.get_elapsed_time());
                     moves
                 }
                 AgentType::NonLosingMoveSelector(my_stats, _index) => {
-                    let moves = board_stage.show_non_losing_move();
+                    let moves = match board_stage.show_non_losing_move() {
+                        Some(x) => x,
+                        None => board_stage.get_random_move(),
+                    };
                     my_stats.increment(clock.get_elapsed_time());
                     moves
                 }
                 AgentType::MCTSAgent(my_stats, _index) => {
-                    let moves = monte_carlo_tree_search::tree_searcher(board_stage.clone(), 48);
+                    let moves =
+                        monte_carlo_tree_search::tree_searcher(board_stage.clone(), 48, None);
                     my_stats.increment(clock.get_elapsed_time());
                     moves
                 }
@@ -317,7 +332,7 @@ mod monte_carlo_tree_search {
 
     use rand::{thread_rng, Rng};
 
-    use crate::game_module;
+    use crate::{agent::PerformanceStats, game_module, time_module::StopWatch};
     #[derive(Clone)]
     struct Node {
         /// Current node state
@@ -378,13 +393,16 @@ mod monte_carlo_tree_search {
         }
 
         /// Gets the max ucb value for a given node
-        fn ucb1(&self, parent_visits: u32, select_ending: bool) -> f64 {
-            if select_ending {
-                return self.wins as f64;
-            }
+        fn ucb1(&self, parent_visits: u32, select_ending: bool) -> Option<f64> {
             let q = self.wins as f64 / self.visits as f64;
+            if select_ending {
+                return Some(q);
+            }
+            if self.visits == 0 {
+                return None;
+            }
             let p = 2.0 * (parent_visits as f64).ln() / (self.visits as f64);
-            q + p.sqrt()
+            Some(q + p.sqrt())
         }
 
         /// Selects the best child to pursue based on ucb values
@@ -395,6 +413,10 @@ mod monte_carlo_tree_search {
             if let Some((start, end)) = self.children {
                 for child in start..end {
                     let ucb1 = tree_graph[child].ucb1(parent_visits, select_ending);
+                    if ucb1.is_none() {
+                        return Some(child);
+                    }
+                    let ucb1 = ucb1.unwrap();
                     if ucb1 > max_ucb1 {
                         max_ucb1 = ucb1;
                         selected = Some(child)
@@ -410,14 +432,17 @@ mod monte_carlo_tree_search {
             let mut state = self.state.clone();
             let original_state_play = self.state.x_plays();
             while !state.game_over() {
-                let action = state.get_random_move();
+                let action = match state.show_non_losing_move() {
+                    Some(x) => x,
+                    None => state.get_random_move(),
+                };
                 state = state.get_move(action).unwrap();
             }
             state.reward()
                 * (if state.x_plays() == original_state_play {
-                    -1
-                } else {
                     1
+                } else {
+                    -1
                 })
         }
 
@@ -432,17 +457,26 @@ mod monte_carlo_tree_search {
             self.children = Some((initial, ending))
         }
     }
-    /// Searches the game tree  to get the most optimal action
+    /// Searches the game tree  to get the most optimal action.
+    /// If turns is none, uses the time_limit provided, else uses number of turns.
+    /// Each iteration about 100 micro seconds
     pub(crate) fn tree_searcher(
         beginning_state: game_module::TicTacToeBoard,
         time_limit_in_milli: u128,
+        turn_limit: Option<u64>,
     ) -> (u8, u8) {
         let start_time = SystemTime::now();
         let multiplier = if beginning_state.x_plays() { 1 } else { -1 };
         let mut tree_graph = Vec::new();
         let starter = Node::new(beginning_state, tree_graph.len());
+        let mut iterations = 0;
         tree_graph.push(starter);
-        while start_time.elapsed().unwrap().as_millis() < time_limit_in_milli {
+        let mut statistics = PerformanceStats::new();
+        while ((start_time.elapsed().unwrap().as_millis() < time_limit_in_milli)
+            & turn_limit.is_none())
+            | (iterations <= turn_limit.unwrap_or_default())
+        {
+            let mut clock = StopWatch::new();
             let mut index = 0;
             let mut leaf = tree_graph.get(index).unwrap();
             let mut history = Vec::new();
@@ -472,10 +506,17 @@ mod monte_carlo_tree_search {
             }
             let reward = leaf.rollout() * multiplier;
             for (index, node_index) in history.iter().rev().enumerate() {
-                tree_graph[*node_index].update(if index % 2 == 0 { reward } else { -reward });
+                tree_graph[*node_index].update(if index % 2 == 0 { -reward } else { reward });
             }
+            iterations += 1;
+            statistics.increment(clock.get_elapsed_time());
         }
-        // println!("Total MCTS nodes computed:{}", tree_graph.len());
+        // eprintln!(
+        //     "Total MCTS nodes computed and iterations made:{}, {}",
+        //     tree_graph.len(),
+        //     iterations
+        // );
+        // eprintln!("Statistics: {}", statistics.show());
         let child_selected = tree_graph[0]
             .select_child(tree_graph.clone(), true)
             .unwrap();
@@ -564,7 +605,7 @@ mod game_module {
             moves
         }
         /// Gets the winning move if it exists otherwise shows a random move
-        pub fn show_winning_move(&self) -> (u8, u8) {
+        pub fn show_winning_move(&self) -> Option<(u8, u8)> {
             let last_player = &self.x_is_player;
             let winner_value = match last_player {
                 PlayerToken::X => self.x_value,
@@ -573,14 +614,14 @@ mod game_module {
             for action in self.possible_moves() {
                 let new_value = winner_value + (1 << (3 * action.0 + action.1));
                 if check_if_win(new_value) {
-                    return action;
+                    return Some(action);
                 }
             }
-            self.get_random_move()
+            None
         }
         /// Get the non losing move if it exists(winning move first, otherwise block opponent winning move),
         ///  otherwise gives a random move
-        pub fn show_non_losing_move(&self) -> (u8, u8) {
+        pub fn show_non_losing_move(&self) -> Option<(u8, u8)> {
             let last_player = &self.x_is_player;
             let (winner_value, loser_value) = match last_player {
                 PlayerToken::X => (self.x_value, self.o_value),
@@ -590,7 +631,7 @@ mod game_module {
             for action in self.possible_moves() {
                 let new_value = winner_value + (1 << (3 * action.0 + action.1));
                 if check_if_win(new_value) {
-                    return action;
+                    return Some(action);
                 }
                 if non_losing_move.is_none() {
                     let new_value = loser_value + (1 << (3 * action.0 + action.1));
@@ -599,10 +640,7 @@ mod game_module {
                     }
                 }
             }
-            if let Some(good_move) = non_losing_move {
-                return good_move;
-            }
-            self.get_random_move()
+            non_losing_move
         }
         /// Gives a new board when given an action.
         /// Can err when user gives wrong move
