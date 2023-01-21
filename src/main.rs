@@ -1,5 +1,7 @@
 #![allow(dead_code, unused_variables)]
 
+use agent::AgentType;
+
 use crate::environment::Game;
 use std::{io, ops::ControlFlow};
 fn main() {
@@ -17,6 +19,11 @@ fn main() {
 /// This plays agent 1 vs agent 2 and shows their win counts in percent and also the run time
 fn game_play() {
     let (agent_1, agent_2, game_count) = get_agents_to_play();
+    // let (agent_1, agent_2, game_count) = (
+    //     AgentType::create_agent_from_id(5, 0).unwrap(),
+    //     AgentType::create_agent_from_id(5, 1).unwrap(),
+    //     100,
+    // );
     let mut first_game = Game::new(agent_1, agent_2, game_count);
     if let ControlFlow::Break(_) = first_game.start() {
         return;
