@@ -1,6 +1,5 @@
 #![allow(dead_code, unused_variables)]
 
-use agent::AgentType;
 
 use crate::environment::Game;
 use std::{io, ops::ControlFlow};
