@@ -1,6 +1,5 @@
 #![allow(dead_code, unused_variables)]
 
-
 use crate::environment::Game;
 use std::{io, ops::ControlFlow};
 fn main() {
@@ -766,7 +765,7 @@ mod game_module {
     }
     #[cfg(test)]
     mod tests {
-        use crate::{agent::AgentType, game_module::obtain_board};
+        use crate::{agent::AgentType, game_module::{obtain_board, TicTacToeBoard}};
         #[test]
         fn test_board_creation() {
             let my_board = ["XXO", "XOO", "   "];
